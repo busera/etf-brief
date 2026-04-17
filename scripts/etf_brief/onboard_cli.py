@@ -36,6 +36,7 @@ Design notes:
 from __future__ import annotations
 
 import io
+import os
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -65,6 +66,27 @@ _DEFAULT_CATEGORIES: tuple[str, ...] = (
     "cash",
 )
 _SIGNAL_LEVELS: tuple[str, ...] = ("GREEN", "YELLOW", "ORANGE", "RED")
+
+# Synthetic seed funds used in non-interactive mode so a
+# ``--defaults --yes`` run produces a valid config without touching the
+# network. Tests mutate state before ``_step_funds`` if they want a
+# different portfolio shape.
+_SEED_FUNDS: list[dict[str, Any]] = [
+    {
+        "name": "Example Global Equity ETF",
+        "ticker": "VWCE.DE",
+        "isin": "IE00BK5BQT80",
+        "type": "ETF",
+        "category": "global_equity",
+    },
+    {
+        "name": "Example Gold ETC",
+        "ticker": "SGLN.L",
+        "isin": "IE00B4ND3602",
+        "type": "ETC",
+        "category": "gold",
+    },
+]
 
 
 @dataclass
@@ -100,7 +122,19 @@ class OnboardState:
 
 
 def _repo_root() -> Path:
-    """Return the repo root (two levels up from this file)."""
+    """Resolve the repo root, preferring the explicit ETF_BRIEF_ROOT env var.
+
+    Falls back to the ``.parent.parent.parent`` walk for local clones so
+    the wizard keeps working without setup. When packaged as a wheel,
+    set ``ETF_BRIEF_ROOT=<path>`` to point at the checkout containing
+    ``config.example.yaml``.
+
+    Returns:
+        Absolute path to the repo root.
+    """
+    env = os.environ.get("ETF_BRIEF_ROOT")
+    if env:
+        return Path(env).expanduser().resolve()
     return Path(__file__).resolve().parent.parent.parent
 
 
@@ -335,23 +369,20 @@ def _step_funds(state: OnboardState, interactive: bool) -> None:
         # a valid config without hitting the network. Tests bypass this
         # path by passing --isin / --fund flags (see ``main``).
         if not state.funds:
+            contributions = [
+                max(state.monthly_investment - 100, 1),
+                min(100, state.monthly_investment),
+            ]
             state.funds = [
                 FundEntry(
-                    name="Example Global Equity ETF",
-                    ticker="VWCE.DE",
-                    isin="IE00BK5BQT80",
-                    type="ETF",
-                    category="global_equity",
-                    monthly_contribution=max(state.monthly_investment - 100, 1),
-                ),
-                FundEntry(
-                    name="Example Gold ETC",
-                    ticker="SGLN.L",
-                    isin="IE00B4ND3602",
-                    type="ETC",
-                    category="gold",
-                    monthly_contribution=min(100, state.monthly_investment),
-                ),
+                    name=seed["name"],
+                    ticker=seed["ticker"],
+                    isin=seed["isin"],
+                    type=seed["type"],
+                    category=seed["category"],
+                    monthly_contribution=contributions[idx],
+                )
+                for idx, seed in enumerate(_SEED_FUNDS)
             ]
         return
 
@@ -610,12 +641,37 @@ def _prompt_allocation_override(
     rule["splits"] = new_splits
 
 
+def _reject_traversal(raw: str) -> None:
+    """Reject vault-directory inputs containing ``..`` path segments.
+
+    Args:
+        raw: The raw user-supplied path string.
+
+    Raises:
+        click.BadParameter: If any path component equals ``..``.
+    """
+    if ".." in Path(raw).parts:
+        raise click.BadParameter(
+            f"vault_dir must not contain '..' segments: {raw}"
+        )
+
+
 def _step_output(state: OnboardState, interactive: bool) -> None:
     """Ask for the vault directory and Telegram preference.
 
     The path is resolved to an absolute form before storage — a relative
     ``./output/`` otherwise ends up interpreted against whatever CWD
     the cron job / launchd job happened to run with.
+
+    Interactive runs re-prompt on a traversal-guard violation so the
+    user can correct the path without aborting the whole wizard.
+    Non-interactive runs propagate ``click.BadParameter`` — the CLI
+    entry point catches it and exits with the validation-error code.
+
+    Raises:
+        click.BadParameter: In non-interactive mode, if the supplied
+            path contains a ``..`` segment. Blocks a supply-chain risk
+            where a wizard run writes briefs outside the intended tree.
     """
     while True:
         raw = _ask_text(
@@ -624,6 +680,13 @@ def _step_output(state: OnboardState, interactive: bool) -> None:
             state.vault_dir,
             interactive,
         )
+        try:
+            _reject_traversal(raw)
+        except click.BadParameter as exc:
+            if not interactive:
+                raise
+            click.echo(f"  {exc.format_message()}", err=True)
+            continue
         expanded = Path(raw).expanduser().resolve()
         if not interactive:
             state.vault_dir = str(expanded)
@@ -898,11 +961,21 @@ def _write_yaml(path: Path, body: str) -> None:
     help="Target path for the generated config (defaults to "
     "<repo-root>/config.yaml).",
 )
+@click.option(
+    "--vault-dir",
+    "vault_dir_override",
+    type=str,
+    default=None,
+    help="Override the vault directory in non-interactive mode. "
+    "Rejects paths containing '..' segments to block traversal "
+    "into parent directories.",
+)
 def cli(
     use_defaults: bool,
     assume_yes: bool,
     force: bool,
     config_path: Path | None,
+    vault_dir_override: str | None,
 ) -> None:
     """Run the onboarding wizard and write a validated ``config.yaml``.
 
@@ -911,13 +984,19 @@ def cli(
         assume_yes: Skip confirmation prompts.
         force: Overwrite an existing config.
         config_path: Optional override for the output path.
+        vault_dir_override: Optional vault directory override. Validated
+            against the path-traversal guard before any filesystem I/O.
     """
     try:
         exit_code = run(
             interactive=not (use_defaults and assume_yes),
             force=force,
             config_path=config_path,
+            vault_dir_override=vault_dir_override,
         )
+    except click.BadParameter as exc:
+        click.echo(f"Error: {exc.format_message()}", err=True)
+        sys.exit(_EXIT_VALIDATION_ERROR)
     except click.Abort:
         click.echo("Aborted by user.", err=True)
         sys.exit(_EXIT_ABORT)
@@ -928,6 +1007,7 @@ def run(
     interactive: bool,
     force: bool,
     config_path: Path | None,
+    vault_dir_override: str | None = None,
 ) -> int:
     """Core wizard entry point, returns an exit code.
 
@@ -937,6 +1017,11 @@ def run(
         interactive: Whether to prompt for input.
         force: Overwrite an existing config.
         config_path: Target path (defaults to ``<repo>/config.yaml``).
+        vault_dir_override: Optional vault directory (used in
+            non-interactive runs to avoid the default ``./output/``).
+            Validated against the path-traversal guard before any
+            filesystem I/O — a ``..`` segment raises
+            ``click.BadParameter``.
 
     Returns:
         One of ``_EXIT_OK`` / ``_EXIT_VALIDATION_ERROR`` / ``_EXIT_IO_ERROR``.
@@ -957,6 +1042,14 @@ def run(
         return _EXIT_IO_ERROR
 
     state = OnboardState()
+    if vault_dir_override is not None:
+        # Apply the override *before* running the pipeline so
+        # ``_step_output`` sees it as the default. The same traversal
+        # guard runs inside ``_step_output`` — applying it here too
+        # means bad input fails fast without building the rest of the
+        # config.
+        _reject_traversal(vault_dir_override)
+        state.vault_dir = vault_dir_override
 
     _step_broker(state, interactive)
     _step_currency(state, interactive)

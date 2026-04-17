@@ -369,3 +369,228 @@ class TestOnboardValidateCLI:
     def test_exit_2_on_bad_usage(self):
         assert onboard_validate.main([]) == 2
         assert onboard_validate.main(["a", "b"]) == 2
+
+
+# --------------------------------------------------------------------------- #
+# onboard_cli — HIGH-2 path traversal guard on vault_dir
+# --------------------------------------------------------------------------- #
+
+
+class TestOnboardVaultDirTraversal:
+    """``--vault-dir`` containing ``..`` must exit non-zero with a message."""
+
+    def test_rejects_vault_dir_with_dotdot_segments(self, tmp_path):
+        runner = CliRunner()
+        target = tmp_path / "config.yaml"
+
+        # Important: no filesystem side effects — target should not be written.
+        result = runner.invoke(
+            onboard_cli.cli,
+            [
+                "--defaults",
+                "--yes",
+                "--force",
+                "--config-path",
+                str(target),
+                "--vault-dir",
+                "../../etc",
+            ],
+        )
+
+        # Exit code 2 = validation error per spec.
+        assert result.exit_code == 2, result.output
+        assert "must not contain '..'" in result.output
+        assert not target.exists(), (
+            "Traversal guard must run before any file was written"
+        )
+
+
+# --------------------------------------------------------------------------- #
+# onboard_cli — MEDIUM-5 explicit repo-root anchor via env var
+# --------------------------------------------------------------------------- #
+
+
+class TestRepoRootOverride:
+    def test_env_var_overrides_default_walk(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("ETF_BRIEF_ROOT", str(tmp_path))
+        assert onboard_cli._repo_root() == tmp_path.resolve()
+
+    def test_unset_env_var_falls_back_to_walk(self, monkeypatch):
+        monkeypatch.delenv("ETF_BRIEF_ROOT", raising=False)
+        result = onboard_cli._repo_root()
+        # Fallback path walks up from the source file — sanity-check that
+        # the repo contains the example config (same contract the
+        # wizard relies on).
+        assert (result / "config.example.yaml").exists(), (
+            "Default walk must reach the repo root"
+        )
+
+
+# --------------------------------------------------------------------------- #
+# AppConfig — MEDIUM-1 custom levels + MEDIUM-2 cross-field categories
+# --------------------------------------------------------------------------- #
+
+
+def _valid_config_dict() -> dict:
+    """Return a minimal, valid config dict with two funds."""
+    return {
+        "portfolio": {
+            "monthly_investment": 500,
+            "currency": "EUR",
+            "broker": "Scalable Capital",
+            "execution_day": 4,
+            "funds": [
+                {
+                    "name": "Global Equity",
+                    "ticker": "VWCE.DE",
+                    "isin": "IE00BK5BQT80",
+                    "type": "ETF",
+                    "category": "global_equity",
+                    "monthly_contribution": 400,
+                },
+                {
+                    "name": "Gold ETC",
+                    "ticker": "SGLN.L",
+                    "isin": "IE00B4ND3602",
+                    "type": "ETC",
+                    "category": "gold",
+                    "monthly_contribution": 100,
+                },
+            ],
+        },
+        "bitcoin": {"status": "disabled", "monthly_budget": None},
+        "sources": {},
+        "recession_signals": {
+            "indicators": [
+                {
+                    "name": "VIX",
+                    "search_query": "VIX today",
+                    "weight": "high",
+                },
+            ]
+        },
+        "thresholds": {
+            "hold_max_signals": 1,
+            "decrease_min_signals": 2,
+            "decrease_max_signals": 3,
+            "sell_min_signals": 4,
+            "increase_gold_min_signals": 2,
+            "drawdown_warn": -10,
+            "drawdown_sell": -20,
+            "rally_take_profit": 15,
+        },
+        "output": {"vault_dir": "/tmp/etf-brief-test", "telegram": False},
+        "analysis": {
+            "lookback_days": 30,
+            "ma_period": 200,
+            "sentiment_weight": 0.3,
+        },
+        "recommendations": {
+            "allocation_rules": [
+                {
+                    "level": "GREEN",
+                    "splits": {
+                        "global_equity": 60,
+                        "gold": 40,
+                        "cash": 0,
+                    },
+                },
+                {
+                    "level": "RED",
+                    "splits": {
+                        "global_equity": 0,
+                        "gold": 0,
+                        "cash": 100,
+                    },
+                },
+            ]
+        },
+    }
+
+
+class TestAllocationRuleLevelFlexibility:
+    def test_custom_level_name_accepted(self):
+        cfg = _valid_config_dict()
+        cfg["recommendations"]["allocation_rules"] = [
+            {
+                "level": "GREEN",
+                "splits": {"global_equity": 60, "gold": 40, "cash": 0},
+            },
+            {
+                "level": "EXTREME",
+                "splits": {"global_equity": 0, "gold": 0, "cash": 100},
+            },
+        ]
+        config = AppConfig.model_validate(cfg)
+        levels = [r.level for r in config.recommendations.allocation_rules]
+        assert levels == ["GREEN", "EXTREME"]
+
+    def test_lowercase_level_gets_normalised(self):
+        cfg = _valid_config_dict()
+        cfg["recommendations"]["allocation_rules"][0]["level"] = "green"
+        config = AppConfig.model_validate(cfg)
+        assert config.recommendations.allocation_rules[0].level == "GREEN"
+
+    def test_empty_level_rejected(self):
+        from pydantic import ValidationError
+
+        cfg = _valid_config_dict()
+        cfg["recommendations"]["allocation_rules"][0]["level"] = "   "
+        with pytest.raises(ValidationError, match="non-empty"):
+            AppConfig.model_validate(cfg)
+
+    def test_duplicate_levels_rejected(self):
+        from pydantic import ValidationError
+
+        cfg = _valid_config_dict()
+        cfg["recommendations"]["allocation_rules"] = [
+            {
+                "level": "GREEN",
+                "splits": {"global_equity": 60, "gold": 40, "cash": 0},
+            },
+            {
+                "level": "GREEN",
+                "splits": {"global_equity": 50, "gold": 50, "cash": 0},
+            },
+        ]
+        with pytest.raises(ValidationError, match="duplicate level"):
+            AppConfig.model_validate(cfg)
+
+
+class TestAllocationRuleCategoryCrossField:
+    def test_unknown_category_rejected(self):
+        from pydantic import ValidationError
+
+        cfg = _valid_config_dict()
+        # 'bonds' is not in funds[].category — should be rejected.
+        cfg["recommendations"]["allocation_rules"][0] = {
+            "level": "GREEN",
+            "splits": {"global_equity": 40, "gold": 30, "bonds": 30},
+        }
+        with pytest.raises(
+            ValidationError, match="references unknown category 'bonds'"
+        ):
+            AppConfig.model_validate(cfg)
+
+    def test_cash_category_always_valid(self):
+        # 'cash' should pass even when no fund has category=cash.
+        cfg = _valid_config_dict()
+        # Both funds are non-cash; splits mention 'cash' — must validate.
+        AppConfig.model_validate(cfg)
+
+    def test_mixed_known_and_unknown_rejected(self):
+        from pydantic import ValidationError
+
+        cfg = _valid_config_dict()
+        cfg["recommendations"]["allocation_rules"][1] = {
+            "level": "RED",
+            "splits": {
+                "global_equity": 50,
+                "emerging_markets": 50,  # not in funds
+            },
+        }
+        with pytest.raises(
+            ValidationError,
+            match="references unknown category 'emerging_markets'",
+        ):
+            AppConfig.model_validate(cfg)

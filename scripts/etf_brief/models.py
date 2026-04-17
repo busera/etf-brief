@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 _FORBID = ConfigDict(extra="forbid")
@@ -114,12 +114,40 @@ class AllocationRule(BaseModel):
     ``splits`` keys must match the ``category`` values of the configured
     funds (plus the synthetic ``cash`` category). Values are percentages
     that sum to 100 within :data:`_ALLOCATION_TOLERANCE`.
+
+    ``level`` is free-form so users can model custom signal regimes
+    (e.g. ``"EXTREME"``). The canonical four — ``GREEN``, ``YELLOW``,
+    ``ORANGE``, ``RED`` — remain valid; the field validator only
+    normalises to upper case and rejects empty strings. Uniqueness
+    across the configured rule set is enforced at
+    :class:`AppConfig` level.
     """
 
     model_config = _FORBID
 
-    level: Literal["GREEN", "YELLOW", "ORANGE", "RED"]
+    level: str
     splits: dict[str, float]
+
+    @field_validator("level", mode="after")
+    @classmethod
+    def _normalise_level(cls, value: str) -> str:
+        """Upper-case the level and reject empty strings.
+
+        Args:
+            value: Raw level as parsed from YAML.
+
+        Returns:
+            The upper-cased level.
+
+        Raises:
+            ValueError: If the level is empty or whitespace-only.
+        """
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError(
+                "AllocationRule.level must be a non-empty string"
+            )
+        return stripped.upper()
 
     @model_validator(mode="after")
     def _splits_sum_to_100(self) -> "AllocationRule":
@@ -239,6 +267,51 @@ class AppConfig(BaseModel):
     output: OutputConfig
     analysis: AnalysisConfig
     recommendations: RecommendationsConfig
+
+    @model_validator(mode="after")
+    def _allocation_levels_unique(self) -> "AppConfig":
+        """Reject duplicate signal-level keys across allocation rules.
+
+        A single rule for a given level is the contract — two rules
+        with ``level: GREEN`` would make the downstream selection
+        non-deterministic.
+        """
+        levels = [
+            rule.level for rule in self.recommendations.allocation_rules
+        ]
+        if len(levels) != len(set(levels)):
+            seen: set[str] = set()
+            dupes: list[str] = []
+            for lvl in levels:
+                if lvl in seen and lvl not in dupes:
+                    dupes.append(lvl)
+                seen.add(lvl)
+            raise ValueError(
+                "allocation_rules contains duplicate level(s): "
+                f"{', '.join(dupes)}. Each level must appear at most once."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _allocation_splits_reference_known_categories(self) -> "AppConfig":
+        """Every ``splits`` key must match a fund category or ``cash``.
+
+        The synthetic ``cash`` category is held outside the saving plan
+        and is always valid. Any other key must be present in at least
+        one ``portfolio.funds[].category``.
+        """
+        known_categories: set[str] = {
+            fund.category for fund in self.portfolio.funds
+        } | {"cash"}
+        for rule in self.recommendations.allocation_rules:
+            for category in rule.splits:
+                if category not in known_categories:
+                    raise ValueError(
+                        "allocation_rules.splits references unknown "
+                        f"category {category!r} — not in funds[].category "
+                        "or 'cash'"
+                    )
+        return self
 
     @classmethod
     def load_from_yaml(cls, path: Path) -> "AppConfig":

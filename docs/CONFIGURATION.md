@@ -127,11 +127,22 @@ recommendations:
     # ... ORANGE, RED
 ```
 
-- One rule per signal level (`GREEN`, `YELLOW`, `ORANGE`, `RED`).
+- One rule per signal level. The canonical four are `GREEN`, `YELLOW`,
+  `ORANGE`, `RED`, but `level` is free-form — you can model custom
+  regimes (e.g. `EXTREME`) as long as each level appears at most once
+  across the rule set. Level strings are upper-cased on load, so
+  `yellow` and `YELLOW` are the same level.
 - `splits` keys must match the `category` values of your funds — plus the
-  synthetic `cash` category (money held outside the saving plan).
+  synthetic `cash` category (money held outside the saving plan). A
+  pydantic cross-field validator rejects any unknown category with
+  `allocation_rules.splits references unknown category 'X' — not in
+  funds[].category or 'cash'`.
 - Weights are percentages. A pydantic validator rejects the config
   if weights for any level do not sum to 100 (tolerance 0.01).
+- The `/etf-brief onboard` wizard rounds percentages to whole numbers
+  and absorbs any residual into the largest split so each level sums
+  to exactly 100. A hand-computed 33.34 / 33.33 / 33.33 renders as
+  34 / 33 / 33.
 
 ### Example: 3-fund vs 5-fund portfolio
 
@@ -173,3 +184,23 @@ At 500 EUR/month with GREEN weights 33/34/33/0:
 - Global: 500 × 34 / 100 = 170 EUR
 - Europe: 500 × 33 / 100 = 165 EUR
 - Cash: 500 × 0 / 100 = 0 EUR
+
+## Tuning knobs (advanced)
+
+A handful of HTTP-behaviour constants live in `scripts/fetcher.py` as
+module-level constants rather than config keys. The defaults are
+tuned for Yahoo + JustETF at the current 2026 rate limits and
+should not need changing for normal use. If you hit sustained
+429s, drop the interval; if the scraper feels slow on a good
+connection, raise it.
+
+| Constant | Default | Meaning |
+|---|---|---|
+| `RATE_LIMIT_SECONDS` | `1.5` | Minimum seconds between consecutive Yahoo chart-API calls (hard floor, enforced by `_RateLimiter`). |
+| `MAX_RETRIES` | `5` | Upper bound on Yahoo 429-retry attempts. After this many `Retry-After` sleeps the fetcher gives up and returns `None`. |
+| `BACKOFF_CAP_SECONDS` | `30.0` | Absolute ceiling on per-retry sleep. Caps both exponential backoff and `Retry-After` headers — protects against pathological server responses. |
+| `TIMEOUT` | `30` | `requests.get` timeout (seconds) for every fetch. Applies to JustETF, Yahoo, TradingView, and Fear & Greed. |
+
+These are module-level constants, not config keys. Users who need
+to tune them edit `scripts/fetcher.py` directly. Keep any changes
+local to your fork — they are not part of the `config.yaml` schema.

@@ -52,6 +52,7 @@ if str(_SCRIPTS_DIR) not in sys.path:
 
 from etf_brief.datetime_utils import now_berlin  # noqa: E402
 from etf_brief.fallback import stooq_quote  # noqa: E402
+from etf_brief.http_utils import USER_AGENTS, get_rotating_headers  # noqa: E402
 from etf_brief.logging_config import setup_logger  # noqa: E402
 from etf_brief.models import AppConfig  # noqa: E402
 
@@ -65,33 +66,56 @@ MAX_RETRIES = 5
 BACKOFF_CAP_SECONDS = 30.0
 TIMEOUT = 30
 
-# Rotating User-Agent pool — reduces 429 rate against Yahoo/JustETF
-# which throttle by UA.
-USER_AGENTS: list[str] = [
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-    "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
-    "Mozilla/5.0 (X11; Linux x86_64) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_3) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-]
+# Re-export USER_AGENTS for tests that still grep ``fetcher.USER_AGENTS``
+# after the module was split into ``etf_brief.http_utils``.
+__all__ = ["USER_AGENTS"]
 
 
 def _get_headers() -> dict[str, str]:
     """Build request headers with a randomly rotated User-Agent.
 
+    Thin alias around :func:`etf_brief.http_utils.get_rotating_headers`
+    kept so tests and call sites continue to work unchanged.
+
     Returns:
         Dict of HTTP headers suitable for requests to rate-limiting
         data sources (Yahoo, JustETF).
     """
-    return {
-        "User-Agent": random.choice(USER_AGENTS),
-        "Accept-Language": "en-US,en;q=0.9",
-    }
+    return get_rotating_headers()
+
+
+class _RateLimiter:
+    """Minimum-interval rate limiter for a single upstream source.
+
+    Encapsulates the previous module-level ``_yahoo_last_call`` global.
+    Tests reset state via :meth:`reset` instead of poking the module.
+    """
+
+    def __init__(self, min_interval_seconds: float) -> None:
+        """Initialise with a minimum seconds-between-calls interval.
+
+        Args:
+            min_interval_seconds: Hard floor on inter-call delay.
+        """
+        self.min_interval = min_interval_seconds
+        self.last_call = 0.0
+
+    def wait(self) -> None:
+        """Sleep just long enough to satisfy the interval since last call."""
+        elapsed = time.monotonic() - self.last_call
+        if elapsed < self.min_interval:
+            time.sleep(self.min_interval - elapsed)
+
+    def mark(self) -> None:
+        """Record that a call just happened (call after ``requests.get``)."""
+        self.last_call = time.monotonic()
+
+    def reset(self) -> None:
+        """Reset internal state. Intended for tests only."""
+        self.last_call = 0.0
+
+
+_yahoo_limiter = _RateLimiter(RATE_LIMIT_SECONDS)
 
 
 def fetch_page(url: str) -> BeautifulSoup | None:
@@ -176,9 +200,6 @@ def scrape_justetf(isin: str) -> dict[str, Any] | None:
     return data
 
 
-_yahoo_last_call: float = 0.0  # module-level rate-limit tracker
-
-
 def yahoo_chart_api(ticker: str) -> dict[str, Any] | None:
     """Fetch a quote via Yahoo Finance's chart API.
 
@@ -194,10 +215,7 @@ def yahoo_chart_api(ticker: str) -> dict[str, Any] | None:
         "currency": ..., ...}`` on success, or ``None`` if all retries
         were exhausted or the response was empty/malformed.
     """
-    global _yahoo_last_call
-    elapsed = time.monotonic() - _yahoo_last_call
-    if elapsed < RATE_LIMIT_SECONDS:
-        time.sleep(RATE_LIMIT_SECONDS - elapsed)
+    _yahoo_limiter.wait()
 
     url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}"
     params = {"interval": "1d", "range": "1mo"}
@@ -207,7 +225,7 @@ def yahoo_chart_api(ticker: str) -> dict[str, Any] | None:
             resp = requests.get(
                 url, headers=_get_headers(), params=params, timeout=TIMEOUT
             )
-            _yahoo_last_call = time.monotonic()
+            _yahoo_limiter.mark()
             if resp.status_code == 429:
                 wait = _compute_backoff(resp, attempt)
                 logger.info(

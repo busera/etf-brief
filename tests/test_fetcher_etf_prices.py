@@ -140,7 +140,7 @@ class TestRateLimitHardening:
     @patch("fetcher.requests.get")
     def test_yahoo_429_retries_with_jitter(self, mock_get, mock_sleep):
         """Two 429s followed by success — retries happen and backoff fires."""
-        fetcher._yahoo_last_call = 0.0
+        fetcher._yahoo_limiter.reset()
 
         resp_429 = MagicMock()
         resp_429.status_code = 429
@@ -182,7 +182,7 @@ class TestRateLimitHardening:
     @patch("fetcher.requests.get")
     def test_yahoo_429_respects_retry_after_header(self, mock_get, mock_sleep):
         """Retry-After header → wait time uses header value + jitter."""
-        fetcher._yahoo_last_call = 0.0
+        fetcher._yahoo_limiter.reset()
 
         resp_429 = MagicMock()
         resp_429.status_code = 429

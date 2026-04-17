@@ -228,14 +228,14 @@ For each fund category:
 
 ### 2a. Recession Signal Score
 
-Count active recession signals. Apply signal level:
+Read the active values from `config.yaml → thresholds` at the start of Phase 2.
+Count active recession signals, then apply the signal level as a function of
+the config keys (not hardcoded numbers):
 
-| Active Signals | Level | Color |
-|---------------|-------|-------|
-| 0-1 | LOW RISK | GREEN |
-| 2-3 | ELEVATED | YELLOW |
-| 4-5 | HIGH RISK | ORANGE |
-| 6+ | CRITICAL | RED |
+- **GREEN** when `active_signals ≤ thresholds.hold_max_signals`
+- **YELLOW** when `thresholds.decrease_min_signals ≤ active_signals ≤ thresholds.decrease_max_signals`
+- **ORANGE** when `active_signals ≥ thresholds.sell_min_signals − 1` (one below the SELL threshold)
+- **RED** when `active_signals ≥ thresholds.sell_min_signals`
 
 Weight matters: a single HIGH-weight signal (yield-curve inversion, VIX > 35,
 S&P below 200-day MA) should bump the level up by one even if total count is
@@ -547,7 +547,9 @@ If signal level is ORANGE or RED, prepend the Telegram message with:
    must go DOWN. If "increase", it must go UP. Cross-check every change note
    against the actual numbers.
 3. **Signal level justified**: Count active signals explicitly. Does the count
-   match the stated level (0-1=GREEN, 2-3=YELLOW, 4-5=ORANGE, 6+=RED)?
+   map to the stated level under the Phase 2a rule (derived from
+   `thresholds.hold_max_signals`, `decrease_min_signals`,
+   `decrease_max_signals`, `sell_min_signals`)?
 4. **BTC section present**: includes price, F&G, halving cycle, 200-day MA,
    and a clear START/WAIT/NOT NOW recommendation with reasoning.
 5. **Alternative ETF present**: at least one ETF with ISIN, TER, availability

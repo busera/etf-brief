@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import Any
 
 from loguru import logger
 
@@ -26,7 +27,7 @@ def setup_logger(
     level: str = "INFO",
     rotation: str = "1 day",
     retention: str = "7 days",
-) -> "logger":
+) -> Any:
     """Configure loguru for a skill script.
 
     Args:

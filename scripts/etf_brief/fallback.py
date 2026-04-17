@@ -32,10 +32,11 @@ from __future__ import annotations
 
 import csv
 import io
-import random
 
 import requests
 from loguru import logger
+
+from etf_brief.http_utils import get_rotating_headers
 
 STOOQ_BASE_URL = "https://stooq.com/q/l/"
 STOOQ_TIMEOUT_SECONDS = 15
@@ -51,22 +52,17 @@ YAHOO_TO_STOOQ: dict[str, str] = {
     "GC=F": "gc.f",
 }
 
-USER_AGENTS: list[str] = [
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-]
-
 
 def _headers() -> dict[str, str]:
-    """Return HTTP headers with a rotated User-Agent."""
-    return {
-        "User-Agent": random.choice(USER_AGENTS),
-        "Accept": "text/csv, */*;q=0.1",
-    }
+    """Return HTTP headers with a rotated User-Agent.
+
+    Uses :func:`etf_brief.http_utils.get_rotating_headers` and swaps the
+    ``Accept`` header for ``text/csv`` since stooq returns CSV rather
+    than HTML.
+    """
+    headers = get_rotating_headers()
+    headers["Accept"] = "text/csv, */*;q=0.1"
+    return headers
 
 
 def stooq_quote(symbol: str) -> float | None:

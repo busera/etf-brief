@@ -42,12 +42,18 @@ LOCK_MAX_AGE_SECONDS=$((6 * 60 * 60))  # 6 hours
 # use whatever python3 is first on PATH. Users with a venv should
 # point this at their venv's interpreter when invoking from cron.
 PYTHON_BIN="${ETF_BRIEF_PYTHON:-python3}"
+# Resolve to the absolute path so the log records exactly which
+# interpreter the run used — catches cases where two shells had
+# different PATHs.
+RESOLVED_PYTHON=$(command -v "$PYTHON_BIN" 2>/dev/null || echo "$PYTHON_BIN")
 
 mkdir -p "$LOG_DIR"
 
 log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') $*" >> "$LOG_FILE"
 }
+
+log "Using Python: $RESOLVED_PYTHON"
 
 # --- Dependency pre-flight ---
 # Fail loudly if required packages aren't importable. Far cheaper than
