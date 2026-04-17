@@ -204,3 +204,66 @@ connection, raise it.
 These are module-level constants, not config keys. Users who need
 to tune them edit `scripts/fetcher.py` directly. Keep any changes
 local to your fork — they are not part of the `config.yaml` schema.
+
+## `llm`
+
+Optional. Configures the **standalone Python brief generator**
+(`scripts/generate_brief.py`). The Claude Code skill (`/etf-brief`)
+ignores this block entirely — it always runs inside the Claude Code
+session that loaded `SKILL.md`. This block matters only when invoking
+the generator from cron, CI, or any environment without Claude Code.
+
+```yaml
+llm:
+  primary: claude
+  fallback_order: [claude, ollama]
+  ollama:
+    enabled: false
+    endpoint: "http://localhost:11434"
+    model: "qwen2.5-coder:7b-instruct-mlx"
+    temperature: 0.3
+    num_predict: 4096
+    timeout_seconds: 120
+  anthropic_sdk_model: "claude-sonnet-4-6"
+```
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `primary` | `"claude"` \| `"ollama"` \| `"anthropic_sdk"` | `"claude"` | First provider tried. |
+| `fallback_order` | list[str] | `["claude", "ollama"]` | Subsequent providers, in order. Duplicates of `primary` are dropped. Unknown keys are silently ignored. |
+| `ollama.enabled` | bool | `false` | When `false`, Ollama is removed from the chain even if listed. |
+| `ollama.endpoint` | str | `"http://localhost:11434"` | Base URL of the Ollama HTTP server. Trailing slash is stripped. |
+| `ollama.model` | str | `"qwen2.5-coder:7b-instruct-mlx"` | Model name as known to Ollama (`ollama list`). |
+| `ollama.temperature` | float | `0.3` | Sampling temperature. |
+| `ollama.num_predict` | int | `4096` | Max tokens to generate. |
+| `ollama.timeout_seconds` | int | `120` | HTTP timeout for `/api/chat` per request. |
+| `anthropic_sdk_model` | str | `"claude-sonnet-4-6"` | Model passed to `anthropic.Anthropic().messages.create()`. Requires `ANTHROPIC_API_KEY` and the `anthropic` package. |
+
+### Provider availability
+
+* **Claude CLI** — available iff `claude` is on `PATH`. Detected
+  via `shutil.which("claude")`.
+* **Ollama** — available iff `GET {endpoint}/api/tags` returns 200
+  within 5 s. Probed once at construct time.
+* **Anthropic SDK** — available iff the `anthropic` package is
+  importable AND `ANTHROPIC_API_KEY` is set in the environment.
+
+Providers that fail their availability check are silently dropped
+from the chain (with a debug-level log line). If every provider is
+unavailable or every provider fails, the generator exits non-zero
+with all per-provider error strings joined into the message.
+
+### CLI override
+
+`scripts/generate_brief.py --provider=<name>` force-enables the
+chosen provider as the *only* chain entry — bypassing
+`ollama.enabled`, `primary`, and `fallback_order`. Use this for
+testing a specific provider:
+
+```bash
+python scripts/generate_brief.py --provider=ollama --dry-run
+python scripts/generate_brief.py --provider=claude
+```
+
+`--provider=auto` (the default) honours the chain configured in
+`config.yaml`.

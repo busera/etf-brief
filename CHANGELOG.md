@@ -8,6 +8,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Standalone Python brief generator** (`scripts/generate_brief.py`)
+  for environments without Claude Code (cron, CI, local LLM
+  workflows). Click CLI with `--from-json`, `--provider`,
+  `--dry-run`, `--config` flags. Reuses the existing fetcher,
+  config, and brief template; produces the same Phase-3 markdown.
+- **Pluggable LLM provider chain** (`scripts/etf_brief/llm.py`):
+  `ClaudeCLIProvider`, `OllamaProvider` (local Ollama HTTP server),
+  `AnthropicSDKProvider` (anthropic SDK + `ANTHROPIC_API_KEY`).
+  `build_provider_chain()` honours `primary` + `fallback_order`,
+  filters disabled / unavailable providers, never raises in
+  constructors. `generate_with_fallback()` walks the chain,
+  collecting per-provider errors before exhausting.
+- **`llm` config block** (`OllamaConfig`, `LLMConfig` in
+  `models.py`, `config.example.yaml`, `docs/CONFIGURATION.md#llm`).
+  Backwards-compatible default factory — existing configs without
+  the block continue to work (Claude-CLI-only chain).
+- `scripts/etf_brief/brief_generator.py` — pure prompt-assembly
+  module (I/O-free apart from reading the bundled template). Tests
+  inject pre-built provider chains; previous-brief loading lives
+  in the CLI.
+- `scripts/etf_brief/prompts/brief.md` — user-prompt template
+  driven by `string.Template.safe_substitute` so the markdown body
+  uses `{` and `}` freely. Embeds the full Phase-3 output template.
+- `tests/test_llm.py` (21 tests) + `tests/test_brief_generator.py`
+  (11 tests) — all HTTP / subprocess / SDK paths mocked.
 - `/etf-brief onboard` interactive wizard (LLM-driven in Claude Code,
   standalone CLI fallback via `python -m etf_brief.onboard_cli`).
   Produces a pydantic-validated `config.yaml` from Q&A. Validates ISINs

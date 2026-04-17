@@ -249,6 +249,49 @@ class AnalysisConfig(BaseModel):
     sentiment_weight: float
 
 
+class OllamaConfig(BaseModel):
+    """Local Ollama HTTP server settings for the Python brief generator.
+
+    Used only by :mod:`etf_brief.llm` (the standalone Python path).
+    The Claude Code skill ignores this block entirely. ``enabled``
+    defaults to ``False`` so the public skill keeps a Claude-only
+    chain unless the user opts in.
+    """
+
+    model_config = _FORBID
+
+    enabled: bool = False
+    endpoint: str = "http://localhost:11434"
+    model: str = "qwen2.5-coder:7b-instruct-mlx"
+    temperature: float = 0.3
+    num_predict: int = 4096
+    timeout_seconds: int = 120
+
+
+class LLMConfig(BaseModel):
+    """LLM provider chain configuration for the Python brief generator.
+
+    ``primary`` and ``fallback_order`` entries pick from the canonical
+    keys ``claude``, ``ollama``, ``anthropic_sdk``. Only providers in
+    ``fallback_order`` are tried after the primary; the primary
+    appears first in the chain regardless of whether it also appears
+    in ``fallback_order`` (duplicates are dropped).
+
+    The Claude Code skill ignores this entirely — it always runs
+    inside Claude. This block matters only when running
+    ``python scripts/generate_brief.py``.
+    """
+
+    model_config = _FORBID
+
+    primary: Literal["claude", "ollama", "anthropic_sdk"] = "claude"
+    fallback_order: list[str] = Field(
+        default_factory=lambda: ["claude", "ollama"]
+    )
+    ollama: OllamaConfig = Field(default_factory=OllamaConfig)
+    anthropic_sdk_model: str = "claude-sonnet-4-6"
+
+
 class AppConfig(BaseModel):
     """Top-level application configuration.
 
@@ -267,6 +310,7 @@ class AppConfig(BaseModel):
     output: OutputConfig
     analysis: AnalysisConfig
     recommendations: RecommendationsConfig
+    llm: LLMConfig = Field(default_factory=LLMConfig)
 
     @model_validator(mode="after")
     def _allocation_levels_unique(self) -> "AppConfig":

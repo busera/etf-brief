@@ -219,3 +219,26 @@ recommendations:
         global_equity: 0
         europe_equity: 0
         cash: 50
+
+# LLM provider chain — only used by the standalone Python brief
+# generator (`scripts/generate_brief.py`). The Claude Code skill
+# (`/etf-brief`) ignores this block entirely; it always runs inside
+# the Claude Code session that loaded SKILL.md.
+#
+# Keys: `claude` (Claude CLI), `ollama` (local Ollama HTTP server),
+# `anthropic_sdk` (anthropic Python SDK + ANTHROPIC_API_KEY env).
+#
+# `primary` runs first. `fallback_order` defines later attempts —
+# duplicates are dropped. Disabled providers (e.g. `ollama.enabled:
+# false`) are filtered out of the chain.
+llm:
+  primary: claude
+  fallback_order: [claude, ollama]
+  ollama:
+    enabled: false
+    endpoint: "http://localhost:11434"
+    model: "qwen2.5-coder:7b-instruct-mlx"
+    temperature: 0.3
+    num_predict: 4096
+    timeout_seconds: 120
+  anthropic_sdk_model: "claude-sonnet-4-6"

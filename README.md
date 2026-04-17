@@ -134,6 +134,24 @@ The wrapper handles locking, stale-lock detection, and log rotation —
 wire in your own driver (e.g. `claude -p "/etf-brief" ...`) where the
 file says.
 
+### Standalone brief generation (no Claude Code)
+
+The skill ships a Python brief generator at `scripts/generate_brief.py`
+for environments where Claude Code is not available — cron, CI,
+remote boxes, or local LLM workflows. It reuses the same fetcher,
+config, and output template as the Claude Code path.
+
+```bash
+PYTHONPATH=scripts python scripts/generate_brief.py                  # auto chain from config.llm
+PYTHONPATH=scripts python scripts/generate_brief.py --provider=ollama --dry-run
+PYTHONPATH=scripts python scripts/generate_brief.py --from-json /tmp/snapshot.json
+```
+
+The provider chain (Claude CLI → Ollama → Anthropic SDK) is
+configured in the `llm` block of `config.yaml`. See the LLM section
+of [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md#llm) for the
+schema and provider semantics.
+
 ## Configuration
 
 Everything lives in `config.yaml`. See

@@ -603,6 +603,17 @@ install flavours (venv / conda / system). `scripts/run.sh` performs
 a dependency pre-flight and exits with a clear error if the imports
 are missing.
 
+### Standalone Python brief generator (fallback path)
+
+`scripts/generate_brief.py` is a Click CLI that reproduces the
+brief end-to-end without Claude Code. It uses the `llm` block of
+`config.yaml` to pick a provider chain (Claude CLI primary,
+optional Ollama / Anthropic SDK fallback) and writes the same
+markdown template defined in Phase 3 of this file. Use when running
+from cron, CI, or any environment that lacks an interactive Claude
+Code session. Schema and provider semantics:
+[`docs/CONFIGURATION.md#llm`](docs/CONFIGURATION.md#llm).
+
 ### Upstream (this skill reads from)
 
 - `scripts/fetcher.py` — structured price and macro data
