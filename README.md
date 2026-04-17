@@ -1,0 +1,140 @@
+# ETF Brief
+
+A Claude Code skill that produces a weekly ETF / ETC investment brief:
+recession-signal dashboard, per-fund HOLD/INCREASE/DECREASE/SELL
+recommendations, config-driven allocation rules, an optional Bitcoin
+watch, and optional Telegram + Obsidian output.
+
+This is decision support, not financial advice. The skill tells you what
+the indicators say and what a reasonable response looks like. You make
+the call.
+
+## Features
+
+- **Recession dashboard** — 8 weighted signals (yield curve, VIX, PMI,
+  consumer confidence, unemployment claims, central-bank rates, S&P vs
+  200-day MA, gold trend) with severity levels GREEN / YELLOW / ORANGE /
+  RED.
+- **Per-fund recommendations** — HOLD, INCREASE, DECREASE, or SELL per
+  ETF, driven by recession level + per-fund context.
+- **Config-driven allocation rules** — each signal level maps fund
+  categories to percentage weights. Add / remove categories freely; a
+  pydantic validator enforces that weights sum to 100 per level.
+- **Bitcoin watchlist** — optional BTC section covering price, 200-day
+  MA, Fear & Greed, halving cycle, and a clear START / WAIT / NOT NOW
+  recommendation. Toggle via `bitcoin.status` in config.
+- **Alternative ETF scan** — when signal is YELLOW or worse, the skill
+  surfaces at least one concrete ETF-to-watch (ISIN, TER, why now).
+- **Multiple output channels** — terminal always, Obsidian / local
+  markdown file, optional Telegram. Plain text throughout (no parse
+  mode shenanigans).
+- **Data sources** — JustETF quote API (primary), Yahoo Finance chart
+  API (secondary), stooq.com CSV (macro fallback), CNN Business Fear &
+  Greed. No API keys required for any of the base sources.
+
+## Installation
+
+```bash
+mkdir -p ~/.claude/skills
+git clone https://github.com/<your-username>/etf-brief ~/.claude/skills/etf-brief
+cd ~/.claude/skills/etf-brief
+cp config.example.yaml config.yaml       # edit to your funds
+pip install requests beautifulsoup4 pyyaml loguru "pydantic>=2"
+```
+
+No `pip install -e .` required — `fetcher.py` adds its sibling
+`etf_brief/` package to `sys.path` at runtime.
+
+## Usage
+
+From Claude Code:
+
+```
+/etf-brief
+```
+
+The skill runs the scraper, analyzes the result, and produces a brief.
+
+Run the scraper standalone to see the raw JSON:
+
+```bash
+python3 scripts/fetcher.py
+```
+
+Schedule via cron / launchd with the included wrapper:
+
+```bash
+ETF_BRIEF_DRY_RUN=1 bash scripts/run.sh   # smoke test
+```
+
+The wrapper handles locking, stale-lock detection, and log rotation —
+wire in your own driver (e.g. `claude -p "/etf-brief" ...`) where the
+file says.
+
+## Configuration
+
+Everything lives in `config.yaml`. See
+[`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) for a section-by-section
+walkthrough.
+
+- `portfolio.funds` — your ETFs / ETCs (name, ticker, ISIN, category).
+- `thresholds` — how many active signals trigger each recommendation.
+- `recommendations.allocation_rules` — category splits per signal level.
+- `bitcoin` — watchlist / active BTC section. Optional.
+- `output.vault_dir` — where to write briefs.
+- `output.telegram` — off by default.
+
+## Data sources
+
+See [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md) for a complete list
+of URLs hit by the scraper, what each provides, rate limits that apply,
+and the no-API-key promise.
+
+Fallback chain for macro indicators:
+
+1. Yahoo Finance chart API (primary)
+2. stooq.com CSV endpoint (fallback when Yahoo 429s)
+3. Otherwise: record `None` and continue (the skill reports "data
+   unavailable" for that indicator)
+
+## Optional: Telegram notifications
+
+Set two environment variables:
+
+```bash
+export TELEGRAM_BOT_TOKEN="<token-from-@BotFather>"
+export TELEGRAM_CHAT_ID="<your-chat-id>"
+```
+
+When unset, `send_telegram()` logs a single INFO line and returns
+`False`. It never raises, so your brief runs identically with or
+without Telegram configured.
+
+## Development
+
+```bash
+pip install "pytest>=7" pytest-mock
+pytest tests/ -v
+```
+
+Tests never hit the network — every HTTP path is mocked. Loguru is
+redirected to `tmp_path` via an autouse conftest fixture so error-path
+tests do not contaminate production logs (TS-14 compliance).
+
+## Troubleshooting
+
+Common issues and fixes:
+[`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md).
+
+## License
+
+MIT. See [`LICENSE`](LICENSE).
+
+## Disclaimer
+
+This skill is decision support, not financial advice. The author is
+not a licensed financial advisor. ETFs / ETCs / any securities can lose
+value. Do your own research. The example configuration in
+`config.example.yaml` uses real, public products purely so the skill is
+runnable end-to-end out of the box; their presence is not a
+recommendation.

@@ -1,0 +1,28 @@
+# User configuration — do not commit private portfolios or credentials.
+config.yaml
+
+# Runtime output
+logs/
+output/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+# OS / editor noise
+.DS_Store
+*.swp
+.vscode/
+.idea/

@@ -1,0 +1,237 @@
+# -----------------------------------------------------------------------------
+# EXAMPLE CONFIGURATION — ILLUSTRATIVE ONLY.
+# Funds and Bitcoin ETPs below are real public products used as runnable
+# examples. Their presence is NOT a recommendation. Replace with your own
+# holdings, thresholds, and allocation rules. This skill provides data and
+# decision support — it is not financial advice.
+# -----------------------------------------------------------------------------
+#
+# How to use:
+#   1. Copy this file: `cp config.example.yaml config.yaml`
+#   2. Edit `config.yaml` — add your actual funds, set your monthly budget,
+#      tune thresholds.
+#   3. `config.yaml` is gitignored so your private data never leaks into
+#      version control.
+#
+# See docs/CONFIGURATION.md for a field-by-field walkthrough.
+
+portfolio:
+  monthly_investment: 500      # EUR total across all saving plans
+  currency: EUR
+  broker: Scalable Capital     # any broker with saving plans works
+  execution_day: 4             # day of month saving plans execute
+
+  funds:
+    - name: "iShares Physical Gold ETC"
+      ticker: "SGLN.L"
+      isin: "IE00B4ND3602"
+      type: "ETC"
+      category: "gold"
+      monthly_contribution: 165
+
+    - name: "Vanguard FTSE All-World UCITS ETF (Acc)"
+      ticker: "VWCE.DE"
+      isin: "IE00BK5BQT80"
+      type: "ETF"
+      category: "global_equity"
+      monthly_contribution: 170
+
+    - name: "Vanguard FTSE Developed Europe UCITS ETF (Acc)"
+      ticker: "VGEU.DE"
+      isin: "IE00BK5BQY34"
+      type: "ETF"
+      category: "europe_equity"
+      monthly_contribution: 165
+
+# Bitcoin watchlist / active position (EXAMPLES — not recommendations)
+bitcoin:
+  status: "watchlist"          # watchlist | active | disabled
+  monthly_budget: null
+
+  scalable_options:
+    - name: "CoinShares Physical Bitcoin"
+      ticker: "BITC.DE"
+      isin: "GB00BLD4ZL17"
+      ter: 0.35
+      note: "Largest European crypto ETP provider (example, not a recommendation)"
+
+    - name: "Bitwise Physical Bitcoin ETP"
+      ticker: "BTCE.DE"
+      isin: "DE000A27Z304"
+      ter: 0.20
+      note: "Low TER, German-domiciled (example, not a recommendation)"
+
+    - name: "Invesco Physical Bitcoin"
+      ticker: "BTIC.DE"
+      isin: "XS2376095068"
+      ter: 0.39
+      note: "Invesco brand, physically backed (example, not a recommendation)"
+
+    - name: "21Shares Bitcoin ETP"
+      ticker: "ABTC.DE"
+      isin: "CH0454664001"
+      ter: 1.49
+      note: "Swiss-domiciled (example, not a recommendation)"
+
+  direct_options:
+    - name: "Kraken Exchange"
+      type: "exchange"
+      fees: "0.16-0.26% maker/taker"
+      note: "Full exchange, self-custody possible (example)"
+    - name: "Relai"
+      type: "app"
+      fees: "1% buy fee"
+      note: "Swiss Bitcoin-only app, auto-DCA (example)"
+
+  indicators:
+    - name: "BTC Price"
+      search_query: "bitcoin price today EUR"
+    - name: "BTC vs 200-day MA"
+      search_query: "bitcoin 200 day moving average"
+    - name: "BTC Fear & Greed"
+      search_query: "bitcoin fear and greed index today"
+    - name: "BTC Halving Cycle"
+      search_query: "bitcoin halving cycle position 2026"
+      note: "Last halving April 2024 — typically bullish 12-18 months post-halving"
+    - name: "BTC ETF Flows"
+      search_query: "bitcoin ETF inflows outflows weekly"
+      note: "US spot BTC ETF flows signal institutional sentiment"
+
+# Web sources for market data and analysis (scraped by fetcher.py or
+# searched by the skill via WebSearch)
+sources:
+  price_sources:
+    - "finance.yahoo.com"
+    - "justetf.com"
+    - "google.com/finance"
+
+  macro_sources:
+    - "fred.stlouisfed.org"
+    - "ecb.europa.eu"
+    - "tradingeconomics.com"
+
+  analysis_sources:
+    - "reuters.com/markets"
+    - "bloomberg.com/markets"
+    - "ft.com/markets"
+    - "morningstar.com"
+
+  etf_sources:
+    - "justetf.com/en/search.html"
+    - "etfdb.com"
+    - "etfcentral.com/etf-screener"
+
+  gold_sources:
+    - "kitco.com"
+    - "gold.org"
+
+  sentiment_sources:
+    - source: "reddit.com/r/ETFs"
+      type: "reddit"
+      note: "Retail ETF investor sentiment"
+    - source: "reddit.com/r/Bogleheads"
+      type: "reddit"
+      note: "Long-term passive investing community"
+
+# Recession detection signals — each search_query is passed to WebSearch
+recession_signals:
+  indicators:
+    - name: "US Yield Curve (10Y-2Y)"
+      search_query: "US treasury yield curve 10 year 2 year spread today"
+      signal: "inverted"
+      weight: high
+
+    - name: "VIX (Fear Index)"
+      search_query: "VIX index today"
+      threshold_warn: 25
+      threshold_critical: 35
+      weight: high
+
+    - name: "PMI Manufacturing"
+      search_query: "US ISM manufacturing PMI latest"
+      threshold_contraction: 50
+      weight: medium
+
+    - name: "Consumer Confidence"
+      search_query: "US consumer confidence index latest"
+      signal: "declining_3_months"
+      weight: medium
+
+    - name: "Unemployment Claims"
+      search_query: "US initial jobless claims latest"
+      signal: "rising_trend"
+      weight: medium
+
+    - name: "ECB/Fed Rate Decisions"
+      search_query: "ECB Federal Reserve latest rate decision"
+      signal: "unexpected_cut"
+      weight: high
+
+    - name: "S&P 500 vs 200-day MA"
+      search_query: "S&P 500 200 day moving average today"
+      signal: "price_below_ma"
+      weight: high
+
+    - name: "Gold Price Trend"
+      search_query: "gold price trend 3 months"
+      signal: "sharp_rise"
+      weight: medium
+      note: "Gold rises in fear — good for gold ETC but bad signal for equities"
+
+# Recommendation thresholds (signal counts and price-move triggers)
+thresholds:
+  hold_max_signals: 1
+  decrease_min_signals: 2
+  decrease_max_signals: 3
+  sell_min_signals: 4
+  increase_gold_min_signals: 2
+  drawdown_warn: -10
+  drawdown_sell: -20
+  rally_take_profit: 15
+
+# Where to write briefs + whether to emit a Telegram message
+output:
+  vault_dir: "./output/"
+  telegram: false
+
+# Trend-analysis parameters
+analysis:
+  lookback_days: 30
+  ma_period: 200
+  sentiment_weight: 0.3
+
+# Config-driven allocation rules — each signal level maps fund categories
+# to percentage weights (must sum to 100 per level; pydantic validates).
+#
+# Keys in `splits` must match `funds[].category` values above, plus the
+# synthetic `cash` category (held outside the saving plan). Add / remove
+# categories freely as your portfolio evolves.
+#
+# To compute EUR amounts: EUR per category = monthly_investment * pct / 100
+# e.g. at 500 EUR/month, GREEN gold = 500 * 33 / 100 = 165 EUR.
+recommendations:
+  allocation_rules:
+    - level: GREEN
+      splits:
+        gold: 33
+        global_equity: 34
+        europe_equity: 33
+        cash: 0
+    - level: YELLOW
+      splits:
+        gold: 40
+        global_equity: 30
+        europe_equity: 30
+        cash: 0
+    - level: ORANGE
+      splits:
+        gold: 50
+        global_equity: 25
+        europe_equity: 0
+        cash: 25
+    - level: RED
+      splits:
+        gold: 50
+        global_equity: 0
+        europe_equity: 0
+        cash: 50

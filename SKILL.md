@@ -1,0 +1,485 @@
+---
+name: etf-brief
+description: Weekly ETF/ETC investment brief with recession signals, macro indicators, and HOLD/INCREASE/DECREASE/SELL recommendations for your saving plans.
+user_invocable: true
+execution_protocol: true
+---
+
+# ETF Weekly Brief
+
+Weekly investment brief for your saving plans. Gathers market data via the
+bundled Python scraper and WebSearch, analyzes recession indicators, and
+recommends actions per fund.
+
+## When to Run
+
+- Weekly on Saturday at 08:00 via your scheduled trigger (or any cadence you
+  prefer)
+- On demand via `/etf-brief`
+- Anytime you ask about your ETFs, market conditions, or saving-plan adjustments
+
+## Slash Command Usage
+
+- `/etf-brief` — Full brief (data gathering + analysis + optional Telegram +
+  optional Obsidian)
+- `/etf-brief quick` — Prices + signal level only, skip deep analysis
+- `/etf-brief config` — Show current portfolio, allocation, and thresholds
+- `/etf-brief hc` — Health check: last brief date, current recommendation
+  summary (HOLD/INCREASE/DECREASE counts), recession signal status, next
+  scheduled run
+- `/etf-brief hc-tech` — Technical health check: verify scripts compile, logs
+  clean, data sources reachable
+
+## Configuration
+
+Read config from: `config.yaml` in the repo root (copy from
+`config.example.yaml` on first setup).
+
+Contains: portfolio (funds, ISINs, categories), web sources, recession-signal
+definitions, recommendation thresholds, allocation rules, and output settings.
+
+---
+
+## Phase 1: Data Gathering
+
+### 1a. Run the Fetcher Script
+
+First, run the Python scraper to get structured price and macro data:
+
+```bash
+python3 scripts/fetcher.py
+```
+
+(Run from the repo root. The script auto-adds its sibling package to
+`sys.path`, so no `pip install -e .` is required.)
+
+This outputs JSON to stdout with:
+
+- Fund prices from JustETF (primary API) and Yahoo Finance (secondary)
+- Macro: VIX, Fear & Greed, US 10Y-2Y yield curve, S&P 500, gold futures
+- Stooq CSV fallback when Yahoo 429s (no API keys required)
+
+**Read the JSON output** — this is the primary data source for the brief.
+
+### 1b. Supplement with WebSearch
+
+For data the scraper couldn't get or for additional context:
+
+1. **WebSearch** any fund with no price in the JSON: `"<fund name> <ticker> price today EUR"`
+2. **WebSearch** recession indicators missing from JSON: use `search_query` from config
+3. **WebSearch** `"global stock market outlook recession risk <year>"` for general sentiment
+4. **WebSearch** `"ECB interest rate decision latest <year>"` for rate context
+5. **WebSearch** `"gold price forecast <year>"` for gold outlook
+
+### 1c. Sentiment (Reddit & X)
+
+1. **WebSearch** `"site:reddit.com/r/ETFs recession bear market"` for recent ETF investor sentiment
+2. **WebSearch** `"site:reddit.com/r/Bogleheads market downturn saving plan"` for long-term investor views
+3. **WebSearch** `"site:reddit.com/r/wallstreetbets VIX crash bear"` for retail extremes (contrarian signal)
+4. **WebSearch** relevant X search terms from config: `"recession indicator" OR "bear market signal" OR "VIX spike"`
+
+Reddit / X sentiment is a supplementary signal — weight it lower than macro
+data. Extreme fear on WSB can be a contrarian buy signal. Extreme euphoria can
+signal a top.
+
+### 1d. Bitcoin Monitoring
+
+If `config.yaml → bitcoin.status` is "watchlist" or "active":
+
+1. **WebSearch** `"bitcoin price today EUR"`
+2. **WebSearch** `"bitcoin 200 day moving average"` — is BTC above or below?
+3. **WebSearch** `"bitcoin fear and greed index today"`
+4. **WebSearch** `"bitcoin ETF inflows outflows weekly <year>"` — institutional flows
+5. Note the halving-cycle position (last halving April 2024 — 12-18 months post-halving is historically bullish)
+
+### 1e. Alternative ETF Scan
+
+Only when signal level is YELLOW or worse, or when a sector is notably
+outperforming:
+
+1. **WebSearch** `"best performing ETFs Europe <year>"` for trending opportunities
+2. **WebSearch** `"defensive ETFs for recession <year>"` if signal is ORANGE/RED
+3. **WebSearch** `"bond ETF Europe <year> ECB rate"` if rates are peaking (potential bond rally)
+
+Skip this section entirely if signal is GREEN and nothing notable is happening.
+
+### 1f. Fund-Specific News
+
+For each fund category:
+
+- Gold: **WebSearch** `"gold ETC outlook physical gold investment"`
+- Global equity: **WebSearch** `"FTSE All-World ETF outlook global equity forecast"`
+- Europe equity: **WebSearch** `"European equity ETF outlook FTSE Developed Europe"`
+
+---
+
+## Phase 2: Analysis
+
+### 2a. Recession Signal Score
+
+Count active recession signals. Apply signal level:
+
+| Active Signals | Level | Color |
+|---------------|-------|-------|
+| 0-1 | LOW RISK | GREEN |
+| 2-3 | ELEVATED | YELLOW |
+| 4-5 | HIGH RISK | ORANGE |
+| 6+ | CRITICAL | RED |
+
+Weight matters: a single HIGH-weight signal (yield-curve inversion, VIX > 35,
+S&P below 200-day MA) should bump the level up by one even if total count is
+low.
+
+### 2b. Per-Fund Recommendation
+
+Apply this logic, keyed on `funds[].category` from config:
+
+**Gold (category: "gold")**
+
+- GREEN/YELLOW → HOLD (gold is portfolio insurance)
+- ORANGE/RED → INCREASE (gold is a recession hedge; shift equity allocation here)
+- If gold price already up >20% YTD → HOLD (don't chase)
+
+**Global equity (category: "global_equity")**
+
+- GREEN → HOLD (keep saving plan)
+- YELLOW → HOLD but MONITOR (continue saving plan, watch closely)
+- ORANGE → DECREASE (reduce monthly allocation, build cash)
+- RED → SELL (exit position, especially if drawdown > 20% from high)
+
+**Europe equity (category: "europe_equity")**
+
+- Same as global equity, but also factor in:
+  - ECB rate trajectory (cutting = slowing economy)
+  - EU-specific political / economic risks
+  - EUR strength / weakness
+
+### 2c. Bitcoin Assessment
+
+If BTC is on the watchlist, evaluate whether to start a saving plan:
+
+- BTC price vs 200-day MA (above = trend intact, below = wait)
+- BTC Fear & Greed (extreme fear = potential buying opportunity for long-term)
+- Halving-cycle position (we're ~24 months post-halving — historically late-cycle)
+- Correlation with equities (in risk-off environments, BTC often sells off WITH
+  stocks initially, then decouples)
+- ETF flows (institutional buying = bullish signal)
+
+**Which vehicle?** Compare ETP options on TER, or recommend a direct exchange /
+app if self-custody matters.
+
+**How much?** If recommending entry, suggest a conservative starting amount
+(e.g. 25-50 EUR/month).
+
+Output a clear YES/NO/WAIT recommendation with reasoning.
+
+If BTC is an active position:
+
+- Track performance alongside the other funds
+- Include in allocation recommendations
+- BTC behaves differently from traditional assets — don't apply the same
+  recession framework blindly
+
+### 2d. Alternative ETF Opportunities
+
+Scan for ETFs/ETCs worth considering beyond the current portfolio. Only mention
+if genuinely compelling — don't pad with noise.
+
+Look for:
+
+- **Sector ETFs** outperforming in the current macro environment (defense,
+  energy, healthcare, etc.)
+- **Bond ETFs** if rates are peaking (shifting from equities to bonds as a
+  defensive move)
+- **Commodity ETFs** beyond gold if specific commodities have strong momentum
+- **Dividend ETFs** as defensive plays during volatility
+- **Emerging market ETFs** if valuations are significantly cheaper than
+  developed markets
+
+For each recommendation: name, ISIN, TER, why NOW specifically (not generic
+"diversification is good"), how it fits the portfolio and current signal level,
+and whether it's available on the user's broker.
+
+"Nothing compelling right now — stick with your current funds" is a valid
+output.
+
+### 2e. Saving-Plan Logistics
+
+Saving-plan mechanics at most brokers (e.g. Scalable Capital — adapt for your
+broker):
+
+- Changing amounts, pausing, or restarting a saving plan typically costs
+  nothing — no fees, no penalties
+- Execution happens on a fixed day each month (configured as
+  `portfolio.execution_day`) — changes must be made before then to take effect
+- Pausing a plan does NOT sell your existing shares — they stay invested
+- Restarting just resumes buying at the current price — nothing is "lost" by pausing
+- Selling shares is a separate action from the saving plan — selling triggers
+  a taxable event, pausing does not
+
+**When recommending changes, be explicit:**
+
+- "Pause the Europe plan" = stop buying new shares (existing shares stay)
+- "Decrease global to 125 EUR" = change the monthly amount
+- "SELL" = actually sell existing shares (only in RED / extreme scenarios,
+  flag tax implications)
+
+### 2f. Allocation Suggestion (config-driven)
+
+Read `recommendations.allocation_rules` from `config.yaml`. Each rule maps a
+signal level to a category-weighted split. Categories must match
+`funds[].category` values (plus the synthetic `cash` category held outside the
+saving plan). Weights are percentages summing to 100 per level (pydantic
+validates on load).
+
+An example is provided in `config.example.yaml` — GREEN 33/34/33/0,
+YELLOW 40/30/30/0, ORANGE 50/25/0/25, RED 50/0/0/50.
+
+To compute EUR amounts from percentages:
+
+```
+EUR per category = monthly_investment * pct / 100
+```
+
+e.g. at 500 EUR/month, GREEN gold = 500 * 33 / 100 = 165 EUR.
+
+These are starting points — adjust based on specific signals and fund
+conditions.
+
+### 2g. Historical Context & Signal Change Detection
+
+Check the vault / output directory (`output.vault_dir`) for previous briefs
+(`YYYY-MM-DD ETF Brief.md`).
+
+**Read the last 3-5 briefs** (if they exist) to:
+
+1. **Detect signal changes** — flag prominently if the level changed
+2. **Track trend direction** — improving or deteriorating over the past week?
+3. **Compare recommendations** — did the previous call pan out?
+4. **Note allocation drift** — if the recommendation has been the same for 5+
+   days, reinforce or explain why patience matters
+5. **Track cumulative performance** — how have the funds moved since the first
+   brief?
+
+Use this history in the "What's Happening & What You Should Do" section.
+
+---
+
+## Phase 3: Output
+
+### Output Template (authoritative)
+
+The brief contains these sections in this order. This file is the single
+source of truth — there is no external template to reconcile.
+
+Required frontmatter fields: `date`, `week`, `type: etf-brief`,
+`signal_level`, `signal_color`, `portfolio_value_eur`, `llm_provider`,
+`llm_model`.
+
+### Obsidian / Markdown (Full Brief)
+
+Save to `<vault_dir>/YYYY-MM-DD ETF Brief.md`:
+
+```markdown
+# ETF Daily Brief -- YYYY-MM-DD
+
+## SIGNAL: [GREEN/YELLOW/ORANGE/RED]
+[If changed from yesterday: "CHANGED from GREEN to YELLOW"]
+
+## What's Happening & What You Should Do
+
+[3-5 paragraphs written for a non-expert. Explain:
+1. What's going on in the markets RIGHT NOW in plain language — no jargon, no
+   acronyms without explanation
+2. Why it matters for the user's specific funds (gold, global stocks,
+   European stocks)
+3. What the concrete recommendation is and WHY — explain the reasoning, not
+   just the action
+4. What to watch for next — what would change this recommendation
+5. What to actually DO in the broker this week (or not do)
+
+Write like you're explaining to a smart friend over coffee who doesn't follow
+markets daily. Be direct and opinionated — don't hedge everything. The user
+wants a clear recommendation, not "on the other hand...".]
+
+## Recommendations
+- **Gold ETC (SGLN)**: [HOLD/INCREASE/DECREASE/SELL] -- [reason]
+- **Global Equity (VWCE)**: [HOLD/INCREASE/DECREASE/SELL] -- [reason]
+- **Europe Equity (VGEU)**: [HOLD/INCREASE/DECREASE/SELL] -- [reason]
+
+## Suggested Allocation (XXX EUR/month)
+- Gold ETC: XXX EUR (XX%)
+- Global: XXX EUR (XX%)
+- Europe: XXX EUR (XX%)
+- Cash reserve: XXX EUR (XX%)
+[If different from current: "Change from current: ..."]
+
+## Recession Dashboard
+| Indicator | Value | Status |
+|-----------|-------|--------|
+| US Yield Curve (10Y-2Y) | +X.XX% | Normal/Inverted |
+| VIX | XX.X | Low/Elevated/High |
+| PMI Manufacturing | XX.X | Expanding/Contracting |
+| Consumer Confidence | XX.X | Stable/Declining |
+| Unemployment Claims | XXXk | Stable/Rising |
+| ECB/Fed Rates | X.XX% | Hold/Cut/Hike |
+| S&P 500 vs 200-day MA | +X% above/below | Bullish/Bearish |
+| Gold Trend (3mo) | +X% | Flat/Rising/Falling |
+
+**Active signals: X/8 -- [LEVEL]**
+
+## Fund Performance
+- **SGLN**: EUR XX.XX (1d: X% | 1m: X% | YTD: X%)
+- **VWCE**: EUR XX.XX (1d: X% | 1m: X% | YTD: X%)
+- **VGEU**: EUR XX.XX (1d: X% | 1m: X% | YTD: X%)
+
+## Bitcoin Watch
+- **BTC Price**: EUR XX,XXX (1d: X% | 1m: X% | YTD: X%)
+- **BTC vs 200-day MA**: above/below by X%
+- **BTC Fear & Greed**: XX ([rating])
+- **US BTC ETF Flows**: net inflow/outflow $XXm this week
+- **Halving cycle**: ~XX months post-halving (April 2024)
+- **Recommendation**: [START / WAIT / NOT NOW] -- [plain-English reasoning]
+- **If starting**: [which vehicle + suggested amount]
+
+## Market Context
+[2-3 paragraphs: key macro developments, central-bank stance, geopolitical
+factors affecting the portfolio. Be specific and cite sources.]
+
+## Key News
+- [headline] -- [source] -- [1-line impact assessment]
+- ...
+
+## Sources
+- [list of URLs used for data]
+
+---
+*Automated analysis for personal use. Not financial advice.*
+```
+
+### Telegram (Condensed)
+
+```
+ETF Brief -- YYYY-MM-DD -- [GREEN/YELLOW/ORANGE/RED]
+[If changed: "SIGNAL CHANGED from X to Y"]
+
+RECOMMENDATIONS:
+- Gold ETC: [ACTION]
+- Global: [ACTION]
+- Europe: [ACTION]
+
+Allocation: [XXX/XXX/XXX EUR] [change note if applicable]
+
+Recession signals: X/8
+VIX: XX | Yield curve: [status] | PMI: XX
+
+Performance (1d / 1m / YTD):
+- SGLN: X% / X% / X%
+- VWCE: X% / X% / X%
+- VGEU: X% / X% / X%
+
+[3-5 sentence plain-English summary: what's happening, why it matters for the
+user's funds, what to do. No jargon.]
+
+Full brief in vault.
+```
+
+If signal level is ORANGE or RED, prepend the Telegram message with:
+
+```
+** MARKET ALERT **
+```
+
+---
+
+## Phase 4: Save & Send
+
+1. **Write** the full brief to `<vault_dir>/YYYY-MM-DD ETF Brief.md` using the Write tool
+2. **Send** the condensed version via Telegram (optional — requires
+   `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` env vars; silent no-op if
+   unset)
+3. If signal changed from previous day, the Telegram message is the priority
+   notification
+
+---
+
+## Rules
+
+- **Always include the disclaimer.** This is not financial advice.
+- **Be direct with recommendations.** Users value signal over noise.
+- **Cite sources.** Every data point should trace back to a source.
+- **No markdown tables in Telegram.** Use bullet lists.
+- **If WebSearch fails** for a data point, note "data unavailable" rather than guessing.
+- **Weekend / holiday handling.** Markets are closed Sat/Sun and public
+  holidays. On these days, skip price data and focus on weekly summary +
+  macro outlook. Note "Markets closed" in the brief.
+- **Previous-brief comparison.** Always check if yesterday's brief exists to
+  detect signal changes.
+- **BTC assessment is mandatory.** Every brief must include a clear
+  YES/WAIT/NOT NOW recommendation with reasoning.
+- **Alternative ETF is mandatory.** Every brief must recommend at least one
+  ETF to watch or monitor beyond the current portfolio, with ISIN, TER, and
+  why NOW.
+- **Footnoted sourcing in markdown output.** Every price, indicator, and macro
+  data point gets a footnote citing the source URL and retrieval time.
+  Recommendations: footnote with confidence tag `[HIGH]`/`[MEDIUM]`/`[LOW]`
+  and the evidence basis. Footnotes go at the bottom of the markdown file,
+  not in the Telegram version.
+
+---
+
+## Quality Checklist (verify before sending)
+
+1. **Allocation math**: Do all amounts sum to `monthly_investment` exactly?
+   Verify: Gold + Global + Europe + Cash = `monthly_investment`.
+2. **Change descriptions match numbers**: If you say "reduce gold", the number
+   must go DOWN. If "increase", it must go UP. Cross-check every change note
+   against the actual numbers.
+3. **Signal level justified**: Count active signals explicitly. Does the count
+   match the stated level (0-1=GREEN, 2-3=YELLOW, 4-5=ORANGE, 6+=RED)?
+4. **BTC section present**: includes price, F&G, halving cycle, 200-day MA,
+   and a clear START/WAIT/NOT NOW recommendation with reasoning.
+5. **Alternative ETF present**: at least one ETF with ISIN, TER, availability
+   on the user's broker, and reasoning for why it's relevant NOW.
+6. **No contradictions**: re-read the "What You Should Do" section — does
+   every recommendation in the text match the Recommendations section?
+7. **Previous brief compared**: if a prior brief exists, signal change is
+   flagged.
+8. **Sources listed**: every data point traces to a source URL.
+9. **Disclaimer present**: "Not financial advice" at the bottom.
+
+---
+
+## I/O Contract
+
+### Inputs
+
+| Source | What | Required | Fallback |
+|--------|------|----------|----------|
+| `scripts/fetcher.py` | JSON with fund prices (JustETF, Yahoo), VIX, F&G, yield curve, S&P 500, gold | YES | Supplement missing data via WebSearch |
+| WebSearch | Recession indicators, fund news, sentiment, BTC data, alternative ETFs | YES | Note "data unavailable" per missing item |
+| `config.yaml` | Portfolio funds, recession signal definitions, thresholds, allocation rules | YES | Abort — cannot run without config |
+| Previous briefs | `<vault_dir>/YYYY-MM-DD ETF Brief.md` (last 3-5) | NO | Skip signal-change detection and trend comparison |
+| `etf_brief.notify.send_telegram` | Telegram delivery (reads env vars) | NO | Terminal-only output |
+
+### Output Destinations
+
+- **Markdown file**: Full brief to `<vault_dir>/YYYY-MM-DD ETF Brief.md` with footnoted sourcing
+- **Telegram**: Condensed version, plain text. Prepend "** MARKET ALERT **" if ORANGE/RED. Silent no-op if env vars unset.
+- **Terminal**: Full report (always)
+
+---
+
+## Dependencies
+
+### Upstream (this skill reads from)
+
+- `scripts/fetcher.py` — structured price and macro data
+- `config.yaml` — portfolio config, signal definitions, allocation rules
+- WebSearch — supplementary market data, sentiment, BTC metrics
+- Output directory — previous briefs for trend detection
+
+### Shared resources
+
+- Output directory (write: ETF brief files; read: previous briefs for comparison)
+- `scripts/run.sh` (cron wrapper)
