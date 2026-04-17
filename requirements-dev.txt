@@ -1,0 +1,9 @@
+# Development / test dependencies.
+#
+# Installed on top of requirements.txt. CI installs both so the matrix
+# builds stay minimal and reproducible.
+
+-r requirements.txt
+
+pytest>=7,<9
+pytest-mock>=3,<4

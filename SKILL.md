@@ -472,6 +472,20 @@ If signal level is ORANGE or RED, prepend the Telegram message with:
 
 ## Dependencies
 
+### Python runtime
+
+The skill invokes whichever `python3` is on `PATH` when it runs. The
+user is responsible for making sure the runtime packages
+(`requests`, `beautifulsoup4`, `pyyaml`, `loguru`, `pydantic>=2`,
+`click`) are importable from that interpreter — typically by
+activating a `venv` or conda env in the shell that launches Claude
+Code, or by pointing a cron job at the venv's python directly.
+
+See [`docs/INSTALL.md`](docs/INSTALL.md) for the three supported
+install flavours (venv / conda / system). `scripts/run.sh` performs
+a dependency pre-flight and exits with a clear error if the imports
+are missing.
+
 ### Upstream (this skill reads from)
 
 - `scripts/fetcher.py` — structured price and macro data

@@ -1,0 +1,12 @@
+# Runtime dependencies for etf-brief.
+#
+# `pyproject.toml` remains the canonical declaration. This file mirrors
+# the runtime section for users who prefer `pip install -r`.
+# Keep the two in sync when editing either.
+
+requests>=2.31,<3
+beautifulsoup4>=4.12,<5
+pyyaml>=6.0,<7
+loguru>=0.7,<1
+pydantic>=2.0,<3
+click>=8.1,<9

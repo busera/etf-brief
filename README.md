@@ -34,16 +34,57 @@ the call.
 
 ## Installation
 
+### 1. Clone
+
 ```bash
 mkdir -p ~/.claude/skills
 git clone https://github.com/<your-username>/etf-brief ~/.claude/skills/etf-brief
 cd ~/.claude/skills/etf-brief
+```
+
+### 2. Python environment (recommended: venv)
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate          # macOS / Linux
+# .venv\Scripts\activate            # Windows PowerShell
+pip install -r requirements.txt
+```
+
+<details>
+<summary><strong>Alternative: conda</strong></summary>
+
+```bash
+conda create -n etf-brief python=3.12
+conda activate etf-brief
+pip install -r requirements.txt
+```
+</details>
+
+<details>
+<summary><strong>Alternative: system / global Python (not recommended)</strong></summary>
+
+Works, but you trade isolation for convenience. Dependency conflicts
+become your problem.
+
+```bash
+python3 -m pip install --user -r requirements.txt
+```
+</details>
+
+See [`docs/INSTALL.md`](docs/INSTALL.md) for the full discussion,
+including the cron / launchd activation pitfall.
+
+### 3. Configure
+
+```bash
 cp config.example.yaml config.yaml       # edit to your funds
-pip install requests beautifulsoup4 pyyaml loguru "pydantic>=2"
 ```
 
 No `pip install -e .` required — `fetcher.py` adds its sibling
-`etf_brief/` package to `sys.path` at runtime.
+`etf_brief/` package to `sys.path` at runtime. `requirements.txt` and
+`requirements-dev.txt` are convenience mirrors of the canonical
+dependency declaration in `pyproject.toml`.
 
 ## Usage
 
@@ -113,7 +154,7 @@ without Telegram configured.
 ## Development
 
 ```bash
-pip install "pytest>=7" pytest-mock
+pip install -r requirements-dev.txt
 pytest tests/ -v
 ```
 

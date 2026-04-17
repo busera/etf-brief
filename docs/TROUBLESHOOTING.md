@@ -120,3 +120,52 @@ auto-adds it when run directly; `pytest` uses `pyproject.toml`'s
 
 If you moved files around, either restore the layout or adjust the
 pythonpath entry. Editable install isn't required.
+
+## `ModuleNotFoundError: No module named 'pydantic'` (or yaml / loguru / requests / bs4)
+
+**Symptom:** `python scripts/fetcher.py` errors immediately on an
+import of `pydantic`, `yaml`, `loguru`, `requests`, or `bs4`. Or
+`scripts/run.sh` exits with
+
+```
+ERROR: required Python packages missing.
+Run: pip install -r requirements.txt
+(from the repo root, after activating your venv or conda env).
+```
+
+**Diagnosis:** the interpreter Claude Code / your cron job is
+launching is different from the one you installed the packages into.
+The classic variant is "it worked when I ran it in my terminal, but
+cron fails" — cron inherits none of your interactive shell's state,
+including `PATH`.
+
+**Fix options (pick one):**
+
+1. **Activate your venv in the shell that launches Claude Code.** On
+   macOS, that's your iTerm / Terminal window. `source .venv/bin/activate`
+   from the repo root.
+
+2. **Hardcode the interpreter path in cron / launchd.** Example cron
+   line:
+
+   ```cron
+   0 8 * * 6 /Users/you/.claude/skills/etf-brief/.venv/bin/python /Users/you/.claude/skills/etf-brief/scripts/fetcher.py
+   ```
+
+3. **Set `ETF_BRIEF_PYTHON` when calling `scripts/run.sh`:**
+
+   ```bash
+   ETF_BRIEF_PYTHON=/Users/you/.claude/skills/etf-brief/.venv/bin/python bash scripts/run.sh
+   ```
+
+4. **Fall back to system Python** (not recommended — see
+   `docs/INSTALL.md`) and install packages globally with
+   `pip install --user -r requirements.txt`.
+
+Verify with:
+
+```bash
+python3 -c "import pydantic, yaml, loguru, requests, bs4; print('ok')"
+```
+
+from the same shell that will launch the skill.

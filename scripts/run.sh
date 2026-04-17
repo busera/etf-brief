@@ -9,6 +9,11 @@
 # Optional environment variables:
 #   ETF_BRIEF_ROOT        — repo root (auto-detected from this script's
 #                            location if unset).
+#   ETF_BRIEF_PYTHON      — path to the python3 interpreter that has
+#                            the runtime deps installed. Defaults to
+#                            whatever python3 is first on PATH. For
+#                            cron/launchd, point this at your venv's
+#                            python.
 #   ETF_BRIEF_DRY_RUN=1   — exercise the lock + logging path without
 #                            running the actual driver (useful for tests).
 #
@@ -33,10 +38,37 @@ LOG_FILE="$LOG_DIR/cron.log"
 LOCK_DIR="/tmp/etf-brief.lock.d"
 LOCK_MAX_AGE_SECONDS=$((6 * 60 * 60))  # 6 hours
 
+# Python interpreter override — respect ETF_BRIEF_PYTHON if set, else
+# use whatever python3 is first on PATH. Users with a venv should
+# point this at their venv's interpreter when invoking from cron.
+PYTHON_BIN="${ETF_BRIEF_PYTHON:-python3}"
+
 mkdir -p "$LOG_DIR"
 
 log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') $*" >> "$LOG_FILE"
+}
+
+# --- Dependency pre-flight ---
+# Fail loudly if required packages aren't importable. Far cheaper than
+# taking the lock, running for 30s, and discovering the import error
+# in a partial log.
+check_dependencies() {
+    if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
+        log "ERROR: '$PYTHON_BIN' not found on PATH. Set ETF_BRIEF_PYTHON or install python3."
+        echo "ERROR: '$PYTHON_BIN' not found on PATH." >&2
+        echo "Set ETF_BRIEF_PYTHON to your venv's python, or install python3." >&2
+        return 3
+    fi
+    if ! "$PYTHON_BIN" -c "import pydantic, yaml, loguru, requests, bs4" >/dev/null 2>&1; then
+        log "ERROR: required Python packages missing. Run 'pip install -r requirements.txt' after activating your venv (see docs/INSTALL.md)."
+        echo "ERROR: required Python packages missing." >&2
+        echo "Run: pip install -r requirements.txt" >&2
+        echo "(from the repo root, after activating your venv or conda env)." >&2
+        echo "See docs/INSTALL.md for details." >&2
+        return 3
+    fi
+    return 0
 }
 
 # --- Lock acquisition (mkdir is atomic on APFS) ---
@@ -92,6 +124,11 @@ release_lock() {
 }
 trap release_lock EXIT
 
+if ! check_dependencies; then
+    # check_dependencies already logged + printed a clear message.
+    exit 3
+fi
+
 if ! acquire_lock; then
     log "Another etf-brief run is in progress — skipping this invocation"
     # Clear the EXIT trap so we don't remove someone else's lock.
@@ -99,7 +136,7 @@ if ! acquire_lock; then
     exit 0
 fi
 
-log "Starting ETF brief (pid $$, root=$ETF_BRIEF_ROOT)"
+log "Starting ETF brief (pid $$, root=$ETF_BRIEF_ROOT, python=$PYTHON_BIN)"
 
 cd "$ETF_BRIEF_ROOT"
 
