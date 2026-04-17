@@ -381,7 +381,9 @@ Use this history in the "What's Happening & What You Should Do" section.
 ### Output Template (authoritative)
 
 The brief contains these sections in this order. This file is the single
-source of truth — there is no external template to reconcile.
+source of truth — there is no external template to reconcile. See
+[`docs/EXAMPLE_BRIEF.md`](docs/EXAMPLE_BRIEF.md) for a fully-rendered
+synthetic brief that exercises every section.
 
 Required frontmatter fields: `date`, `week`, `type: etf-brief`,
 `signal_level`, `signal_color`, `portfolio_value_eur`, `llm_provider`,

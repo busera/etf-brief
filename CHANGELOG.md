@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `docs/EXAMPLE_BRIEF.md` — fully-rendered synthetic brief showing the
+  full Obsidian markdown + Telegram condensed output for a 2-fund
+  beginner portfolio (1,000 EUR invested, 200 EUR/month) at YELLOW
+  signal level. Linked from README and SKILL.md.
 - **Standalone Python brief generator** (`scripts/generate_brief.py`)
   for environments without Claude Code (cron, CI, local LLM
   workflows). Click CLI with `--from-json`, `--provider`,

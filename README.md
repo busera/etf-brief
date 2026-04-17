@@ -152,6 +152,13 @@ configured in the `llm` block of `config.yaml`. See the LLM section
 of [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md#llm) for the
 schema and provider semantics.
 
+## What the brief looks like
+
+[`docs/EXAMPLE_BRIEF.md`](docs/EXAMPLE_BRIEF.md) shows a synthetic
+end-to-end brief (Obsidian markdown + Telegram condensed) for a
+beginner-sized 2-fund portfolio (1,000 EUR invested, 200 EUR/month)
+at a YELLOW signal level. Synthetic data, not financial guidance.
+
 ## Configuration
 
 Everything lives in `config.yaml`. See
