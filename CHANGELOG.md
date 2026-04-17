@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- `/etf-brief onboard` interactive wizard (LLM-driven in Claude Code,
+  standalone CLI fallback via `python -m etf_brief.onboard_cli`).
+  Produces a pydantic-validated `config.yaml` from Q&A. Validates ISINs
+  against JustETF, proposes allocation rules based on fund categories,
+  and emits well-commented YAML.
+- `scripts/etf_brief/isin_validator.py` — public `validate_isin()`
+  helper returning an `ISINInfo` pydantic model. Regex guard rejects
+  malformed inputs before any network call; HTTP timeouts raise
+  `TimeoutError` so the wizard can retry.
+- `scripts/etf_brief/onboard_validate.py` — one-shot YAML validator
+  invoked by the LLM onboard path.
+- `requirements.txt` + `requirements-dev.txt` mirroring the canonical
+  pyproject.toml declaration.
+- `docs/INSTALL.md` covering venv / conda / system-Python install
+  paths and the cron/launchd interpreter pitfall.
+
+### Changed
+- `scripts/run.sh` now performs a dependency pre-flight check and
+  respects `ETF_BRIEF_PYTHON` for cron/launchd.
+- CI workflow installs from `requirements*.txt` instead of inline
+  package lists.
+- README Installation section restructured into explicit
+  Clone / Python-env / Configure steps.
+
 ## [0.1.0] - 2026-04-17
 
 ### Added

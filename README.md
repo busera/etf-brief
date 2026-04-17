@@ -77,6 +77,28 @@ including the cron / launchd activation pitfall.
 
 ### 3. Configure
 
+Three paths — pick one:
+
+**A. Run the onboarding wizard in Claude Code (recommended for new users):**
+
+```
+/etf-brief onboard
+```
+
+The wizard asks one question at a time, validates each ISIN against
+JustETF, and writes a ready-to-use `config.yaml` on exit.
+
+**B. Run the wizard on the command line (no Claude Code required):**
+
+```bash
+PYTHONPATH=scripts python -m etf_brief.onboard_cli
+```
+
+Add `--defaults --yes --force` for a fully non-interactive run that
+generates a working skeleton without prompts.
+
+**C. Copy the example and edit by hand:**
+
 ```bash
 cp config.example.yaml config.yaml       # edit to your funds
 ```

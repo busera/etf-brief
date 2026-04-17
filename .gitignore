@@ -1,5 +1,8 @@
 # User configuration — do not commit private portfolios or credentials.
 config.yaml
+# Tempfile from atomic config writes (onboard_cli.py). Normally cleaned
+# up by Path.replace, but a mid-write crash can leave it behind.
+config.yaml.tmp
 
 # Runtime output
 logs/
