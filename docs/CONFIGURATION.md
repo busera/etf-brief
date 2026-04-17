@@ -45,7 +45,7 @@ Optional BTC section.
 | `status` | `"watchlist"` \| `"active"` \| `"disabled"` | yes | Controls whether the skill generates a Bitcoin section. |
 | `monthly_budget` | float | no | EUR per month if a BTC saving plan is active. |
 | `scalable_options` | list | no | Candidate ETP products (name, ISIN, TER, note). |
-| `direct_options` | list | no | Exchanges / apps (Kraken, Relai, …). |
+| `direct_options` | list | no | Direct-purchase venues (exchanges, apps) — add your own. |
 | `indicators` | list | no | Search queries for BTC-specific signals. |
 
 ## `sources`

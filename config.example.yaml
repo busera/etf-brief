@@ -67,22 +67,6 @@ bitcoin:
       ter: 0.39
       note: "Invesco brand, physically backed (example, not a recommendation)"
 
-    - name: "21Shares Bitcoin ETP"
-      ticker: "ABTC.DE"
-      isin: "CH0454664001"
-      ter: 1.49
-      note: "Swiss-domiciled (example, not a recommendation)"
-
-  direct_options:
-    - name: "Kraken Exchange"
-      type: "exchange"
-      fees: "0.16-0.26% maker/taker"
-      note: "Full exchange, self-custody possible (example)"
-    - name: "Relai"
-      type: "app"
-      fees: "1% buy fee"
-      note: "Swiss Bitcoin-only app, auto-DCA (example)"
-
   indicators:
     - name: "BTC Price"
       search_query: "bitcoin price today EUR"
